@@ -157,8 +157,10 @@ impl TermRenderer {
             .enumerate()
             .map(|(i, buffer)| TextArea {
                 buffer,
-                left,
-                top: top + i as f32 * line_height,
+                // glyphon measures left/top in physical pixels; it applies the
+                // scale factor to the buffer's logical glyph positions itself.
+                left: left * scale,
+                top: (top + i as f32 * line_height) * scale,
                 scale,
                 bounds,
                 default_color: Color::rgb(default_color.0, default_color.1, default_color.2),
