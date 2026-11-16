@@ -4269,6 +4269,15 @@ fn encode_input(
             out.extend_from_slice(t.as_bytes());
         }
         egui::Event::Paste(text) => {
+            // An image-only clipboard arrives here as an empty paste (the
+            // vendored egui-winit), but ConPTY strips bracketed-paste
+            // markers, so an empty paste reaches the TUI as nothing at all.
+            // Forward the legacy Ctrl+V byte instead: a TUI that cares
+            // (miao) answers it by reading the clipboard itself.
+            if text.is_empty() {
+                out.push(0x16);
+                return;
+            }
             // Normalize newlines to CR; shells expect carriage returns for Enter.
             let body = text.replace('\n', "\r");
             if bracketed {
