@@ -784,6 +784,24 @@ fn panel_frame_stroke(margin: egui::Margin, fill: Rgb, stroke: Rgb) -> egui::Fra
 pub struct AgentFooterSeg {
     pub id: String,
     pub label: String,
+    /// The agent's semantic tone for this fact (`accent`, `warning`,
+    /// `success`, `error`, `muted`), mapped into the host palette. An agent
+    /// that predates the field, or names an unknown tone, gets the row's
+    /// normal text colour instead of the widget default.
+    pub tone: Option<String>,
+}
+
+/// The chrome colour one merged-footer fact is painted with. The agent names
+/// a semantic tone rather than a value, because the host owns the palette.
+fn footer_tone_colour(tone: Option<&str>, ch: &ChromeColors) -> Rgb {
+    match tone {
+        Some("accent") => ch.accent,
+        Some("warning") => ch.warning,
+        Some("success") => ch.positive,
+        Some("error") => ch.negative,
+        Some("muted") => ch.muted,
+        _ => ch.text,
+    }
 }
 
 /// One row in a details list (Files / Ports / Git / Outline): a single line
@@ -1585,8 +1603,12 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
                 for seg in agent_footer.iter().rev() {
                     if ui
                         .add(
-                            egui::Button::new(egui::RichText::new(&seg.label).size(11.0))
-                                .frame(false),
+                            egui::Button::new(
+                                egui::RichText::new(&seg.label)
+                                    .size(11.0)
+                                    .color(bg_color(footer_tone_colour(seg.tone.as_deref(), &ch))),
+                            )
+                            .frame(false),
                         )
                         .clicked()
                     {
@@ -1743,6 +1765,20 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
 #[cfg(test)]
 mod tab_menu_tests {
     use super::*;
+
+    #[test]
+    fn footer_facts_take_the_palette_colour_of_their_tone() {
+        let ch = ChromeColors::dark();
+        assert_eq!(footer_tone_colour(Some("accent"), &ch), ch.accent);
+        assert_eq!(footer_tone_colour(Some("warning"), &ch), ch.warning);
+        assert_eq!(footer_tone_colour(Some("success"), &ch), ch.positive);
+        assert_eq!(footer_tone_colour(Some("error"), &ch), ch.negative);
+        assert_eq!(footer_tone_colour(Some("muted"), &ch), ch.muted);
+        // An older agent sends no tone, and an unknown one must not paint the
+        // fact in the widget default: the row's text colour is the fallback.
+        assert_eq!(footer_tone_colour(None, &ch), ch.text);
+        assert_eq!(footer_tone_colour(Some("sparkle"), &ch), ch.text);
+    }
 
     fn actions(lang: Lang) -> Vec<TabMenuAction> {
         tab_menu_items(lang)
