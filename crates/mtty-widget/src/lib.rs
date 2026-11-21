@@ -20099,9 +20099,13 @@ fn mouse_report(
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// The (id, label) pairs a visible agent footer carries, in strip order. A
-/// segment missing either field is the agent's bug, not the host's: skip it.
-fn agent_footer_segments(footer: Option<&serde_json::Value>) -> Vec<(String, String)> {
+/// The (id, label, tone) triples a visible agent footer carries, in strip
+/// order. A segment missing its id or label is the agent's bug, not the
+/// host's: skip it. `tone` is optional — an agent that predates it, or names
+/// nothing, leaves the host to pick its normal text colour.
+fn agent_footer_segments(
+    footer: Option<&serde_json::Value>,
+) -> Vec<(String, String, Option<String>)> {
     footer
         .and_then(|footer| footer.get("segs"))
         .and_then(serde_json::Value::as_array)
@@ -20111,6 +20115,9 @@ fn agent_footer_segments(footer: Option<&serde_json::Value>) -> Vec<(String, Str
                     Some((
                         seg.get("id")?.as_str()?.to_string(),
                         seg.get("text")?.as_str()?.to_string(),
+                        seg.get("tone")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string),
                     ))
                 })
                 .collect()
@@ -21160,7 +21167,7 @@ impl chrome::Chrome for State {
         let footer = entry.as_ref().and_then(|entry| entry.get("footer"));
         agent_footer_segments(footer)
             .into_iter()
-            .map(|(id, label)| mtty_ui::chrome::AgentFooterSeg { id, label })
+            .map(|(id, label, tone)| mtty_ui::chrome::AgentFooterSeg { id, label, tone })
             .collect()
     }
     fn agent_footer_chip(&self) -> Option<String> {
@@ -21545,15 +21552,23 @@ mod tests {
     fn the_footer_names_its_facts_in_strip_order() {
         let footer = footer(serde_json::json!([
             {"id": "approval", "text": "! auto", "row": 23, "start": 2, "end": 9,
-             "chord": "ctrl+x f"},
+             "chord": "ctrl+x f", "tone": "warning"},
             {"id": "model", "text": "deepseek-v4", "row": 23, "start": 12, "end": 23,
-             "chord": "ctrl+x m"},
+             "chord": "ctrl+x m", "tone": "accent"},
         ]));
         assert_eq!(
             agent_footer_segments(Some(&footer)),
             vec![
-                ("approval".to_string(), "! auto".to_string()),
-                ("model".to_string(), "deepseek-v4".to_string()),
+                (
+                    "approval".to_string(),
+                    "! auto".to_string(),
+                    Some("warning".to_string()),
+                ),
+                (
+                    "model".to_string(),
+                    "deepseek-v4".to_string(),
+                    Some("accent".to_string()),
+                ),
             ]
         );
         // The chip names the agent by its own report, not a hardcoded build.
@@ -21608,7 +21623,7 @@ mod tests {
         ]));
         assert_eq!(
             agent_footer_segments(Some(&footer)),
-            vec![("model".to_string(), "deepseek-v4".to_string())]
+            vec![("model".to_string(), "deepseek-v4".to_string(), None)]
         );
         assert_eq!(agent_footer_segments(None), vec![]);
         assert_eq!(agent_footer_chip_text(Some("miao"), None), None);
