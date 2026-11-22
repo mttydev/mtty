@@ -1586,12 +1586,13 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
                 // its strip here: each label is a press target, and the press
                 // is synthesized into the pane so the agent's own click
                 // handler acts on it. The agent names itself and its build
-                // with the facts, muted, and only when there are facts.
+                // with the facts, in the accent that identifies the agent,
+                // and only when there are facts.
                 if let Some(chip) = &agent_chip {
                     ui.label(
                         egui::RichText::new(chip)
                             .size(11.0)
-                            .color(bg_color(ch.muted)),
+                            .color(bg_color(ch.accent)),
                     );
                     ui.add_space(10.0);
                 }

@@ -2920,7 +2920,10 @@ impl State {
     fn make_pane(&self, id: String, mut term: Terminal) -> Pane {
         term.set_graphics_enabled(self.graphics_enabled);
         let Rgb(r, g, b) = self.theme.fg;
-        let Rgb(br, bg, bb) = self.theme.bg;
+        // Report the card's own colour as the background: that is what the
+        // renderer shows behind a cell with no colour of its own, so an
+        // adaptive page asking OSC 11 gets the colour it actually sits on.
+        let Rgb(br, bg, bb) = pane_canvas(&self.theme);
         term.set_default_colors([r, g, b], [br, bg, bb]);
         let scale = self.window.scale_factor() as f32;
         term.set_cell_size((self.cw * scale) as u16, (self.ch * scale) as u16);
@@ -2978,10 +2981,22 @@ impl State {
                 .filter(|dir| dir.as_path() != std::path::Path::new("/"))
                 .or_else(mtty_config::home_dir)
         });
+        // The page colour the card paints behind and around the pane. A
+        // full-screen TUI fills every cell itself, so without this it painted
+        // its own page over the grid and left a ring of host background
+        // between the two.
+        let Rgb(cr, cg, cb) = self.theme.chrome().bg;
         // Both names: installed hooks and miao read the former one (ADR 0032).
+        // `MTTY_TERM_BG` names the colour this pane's card is painted in, so a
+        // full-screen page can adopt it instead of drawing a ring of its own
+        // colour inside our padding.
         let env = vec![
             ("MTTY_PANE_ID".to_string(), id.clone()),
             ("MIAOTTY_PANE_ID".to_string(), id.clone()),
+            (
+                "MTTY_TERM_BG".to_string(),
+                format!("#{cr:02x}{cg:02x}{cb:02x}"),
+            ),
             // The merged-footer capability: only a host that answers a press
             // on its own chrome with a synthesized mouse report may set it,
             // so an agent under an older host keeps painting its strip.
@@ -8371,7 +8386,7 @@ impl State {
                 self.theme_name = n.to_string();
                 configure_egui(ctx, &self.theme.chrome());
                 let Rgb(r, g, b) = self.theme.fg;
-                let Rgb(br, bg, bb) = self.theme.bg;
+                let Rgb(br, bg, bb) = pane_canvas(&self.theme);
                 for tab in &mut self.tabs {
                     for pane in &mut tab.panes {
                         pane.term.set_default_colors([r, g, b], [br, bg, bb]);
@@ -12932,7 +12947,10 @@ impl State {
         let mut term = Terminal::from_pipe(cols, rows, 10_000, conn.reader, conn.writer, waker);
         term.set_graphics_enabled(self.graphics_enabled);
         let Rgb(r, g, b) = self.theme.fg;
-        let Rgb(br, bg, bb) = self.theme.bg;
+        // Report the card's own colour as the background: that is what the
+        // renderer shows behind a cell with no colour of its own, so an
+        // adaptive page asking OSC 11 gets the colour it actually sits on.
+        let Rgb(br, bg, bb) = pane_canvas(&self.theme);
         term.set_default_colors([r, g, b], [br, bg, bb]);
         term.set_cell_size((self.cw * scale) as u16, (self.ch * scale) as u16);
         Some(Pane {
@@ -19448,6 +19466,18 @@ fn completion_kind_letter(kind: u8) -> &'static str {
 /// A chrome palette colour as an egui colour.
 fn chrome_rgb(c: mtty_ui::theme::Rgb) -> egui::Color32 {
     egui::Color32::from_rgb(c.0, c.1, c.2)
+}
+
+/// The colour a pane's card is painted in, padding included.
+///
+/// A pane is a rounded card inset by `CARD_MARGIN` and padded by `CARD_PAD`,
+/// and every cell that does not carry its own background shows this colour. A
+/// full-screen TUI that fills each cell in its own theme colour therefore draws
+/// a rectangle a little smaller than the card, and the padding reads as a ring
+/// of a different colour. Panes are told this value so a page can adopt it and
+/// make the two agree.
+fn pane_canvas(theme: &Theme) -> mtty_ui::theme::Rgb {
+    theme.chrome().bg
 }
 
 /// A diagnostic's colour: error, warning, information, hint.
