@@ -236,6 +236,44 @@ pub fn encode_paste(text: &str, bracketed: bool) -> Vec<u8> {
     }
 }
 
+/// Bytes for a paste whose only payload is an image the host wrote to
+/// `MTTY_CLIPBOARD_FILE`. An empty bracketed paste is the signal an
+/// application already treats as "read the clipboard", but ConPTY drops that
+/// pair before the application sees it, so a Windows pane would receive no
+/// input at all and silently ignore the image. The legacy Ctrl+V byte survives
+/// ConPTY and asks the application to read the clipboard itself.
+pub fn encode_image_paste(bracketed: bool) -> Vec<u8> {
+    if !bracketed {
+        return Vec::new();
+    }
+    #[cfg(windows)]
+    {
+        vec![0x16]
+    }
+    #[cfg(not(windows))]
+    {
+        encode_paste("", true)
+    }
+}
+
+/// Paste bytes for a terminal pane.
+///
+/// Windows runs panes under ConPTY, which turns a bracketed paste into key
+/// presses: the markers are dropped and every line break arrives as Enter, so
+/// a chat TUI submits each line instead of holding the text. When the pane's
+/// application asked for bracketed paste, send the legacy Ctrl+V byte for a
+/// multi-line paste instead; the application reads the clipboard itself (miao
+/// does) and keeps the text as one draft. Single-line pastes, and applications
+/// without bracketed paste, keep the text so shells and editors see it
+/// unchanged.
+pub fn encode_terminal_paste(text: &str, bracketed: bool) -> Vec<u8> {
+    #[cfg(windows)]
+    if bracketed && text.contains(['\n', '\r']) {
+        return vec![0x16];
+    }
+    encode_paste(text, bracketed)
+}
+
 /// Encode a key press (special keys and modified keys; printable characters
 /// arrive through [`encode_text`]).
 pub fn encode_key(kind: KeyKind, mods: Modifiers, opts: EncodeOpts) -> Vec<u8> {
@@ -531,6 +569,34 @@ mod tests {
     fn paste_normalizes_newlines() {
         assert_eq!(encode_paste("a\nb", false), b"a\rb");
         assert_eq!(encode_paste("a", true), b"\x1b[200~a\x1b[201~");
+    }
+
+    #[test]
+    fn an_image_paste_reaches_a_windows_pane_as_ctrl_v() {
+        assert!(encode_image_paste(false).is_empty());
+        #[cfg(windows)]
+        assert_eq!(encode_image_paste(true), b"");
+        #[cfg(not(windows))]
+        assert_eq!(encode_image_paste(true), b"[200~[201~");
+    }
+
+    #[test]
+    fn a_multiline_paste_survives_conpty_as_ctrl_v() {
+        #[cfg(windows)]
+        {
+            assert_eq!(encode_terminal_paste("a\r\nb", true), b"\x16");
+            assert_eq!(encode_terminal_paste("a\nb", true), b"\x16");
+            assert_eq!(
+                encode_terminal_paste("one line", true),
+                b"[200~one line[201~"
+            );
+            assert_eq!(encode_terminal_paste("a\nb", false), b"a\rb");
+        }
+        #[cfg(not(windows))]
+        assert_eq!(
+            encode_terminal_paste("a\nb", true),
+            b"\x1b[200~a\rb\x1b[201~"
+        );
     }
 
     fn kitty(flags: u8) -> EncodeOpts {

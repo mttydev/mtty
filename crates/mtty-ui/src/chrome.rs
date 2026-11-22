@@ -779,6 +779,31 @@ fn panel_frame_stroke(margin: egui::Margin, fill: Rgb, stroke: Rgb) -> egui::Fra
         .inner_margin(margin)
 }
 
+/// One agent fact merged into the status row: a label the agent already
+/// localized, addressed by the id its press reports back.
+pub struct AgentFooterSeg {
+    pub id: String,
+    pub label: String,
+    /// The agent's semantic tone for this fact (`accent`, `warning`,
+    /// `success`, `error`, `muted`), mapped into the host palette. An agent
+    /// that predates the field, or names an unknown tone, gets the row's
+    /// normal text colour instead of the widget default.
+    pub tone: Option<String>,
+}
+
+/// The chrome colour one merged-footer fact is painted with. The agent names
+/// a semantic tone rather than a value, because the host owns the palette.
+fn footer_tone_colour(tone: Option<&str>, ch: &ChromeColors) -> Rgb {
+    match tone {
+        Some("accent") => ch.accent,
+        Some("warning") => ch.warning,
+        Some("success") => ch.positive,
+        Some("error") => ch.negative,
+        Some("muted") => ch.muted,
+        _ => ch.text,
+    }
+}
+
 /// One row in a details list (Files / Ports / Git / Outline): a single line
 /// with an icon, a label and right-aligned meta.
 pub struct ChromeItem {
@@ -978,6 +1003,27 @@ pub trait Chrome {
     }
     /// The account chip was clicked.
     fn on_account_chip(&mut self) {}
+    /// Right-edge Remote Control chip text; `None` hides the chip.
+    fn remote_chip(&self) -> Option<String> {
+        None
+    }
+    /// The Remote Control chip was clicked.
+    fn on_remote_chip(&mut self) {}
+
+    /// The active agent pane's merged footer facts, in the order the agent's
+    /// strip paints them. Empty when the pane runs no agent that reports a
+    /// footer, or one too old to merge.
+    fn agent_footer(&self) -> Vec<AgentFooterSeg> {
+        Vec::new()
+    }
+    /// The agent's own name over its build, as the status row shows it; the
+    /// agent reports both.
+    fn agent_footer_chip(&self) -> Option<String> {
+        None
+    }
+    /// A press on the merged footer fact named `id`: the host synthesizes the
+    /// mouse report so the agent's own click handler acts on it.
+    fn on_agent_footer_click(&mut self, id: &str) {}
     fn on_new_tab(&mut self) {}
     fn on_switch_tab(&mut self, i: usize) {}
     fn on_close_tab(&mut self, i: usize) {}
@@ -1131,12 +1177,15 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
     let details_list = host.details_list();
     let status = host.status();
     let status_right = host.status_right();
+    let agent_footer = host.agent_footer();
+    let agent_chip = host.agent_footer_chip();
     let queue_items = host.queue();
     let saved_hosts = host.hosts();
     let mut host_connect: Option<usize> = None;
     let mut queue_input = host.take_queue_input();
 
     let mut menu: Option<MenuId> = None;
+    let mut footer_click: Option<String> = None;
     let mut minimize_window = false;
     let mut maximize_window = false;
     let mut switch = None;
@@ -1155,6 +1204,7 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
     let mut font_delta = 0.0f32;
     let mut launch_miao = false;
     let mut account_chip = false;
+    let mut remote_chip = false;
     let mut toggle_sidebar = false;
     let mut toggle_details = false;
     let mut details_sel = None;
@@ -1343,6 +1393,12 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
                     {
                         account_chip = true;
                     }
+                    if host
+                        .remote_chip()
+                        .is_some_and(|label| ui.button(label).clicked())
+                    {
+                        remote_chip = true;
+                    }
                     if ui.button("A+").clicked() {
                         font_delta = 1.0;
                     }
@@ -1526,6 +1582,44 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
                     );
                     ui.add_space(10.0);
                 }
+                // The active agent's facts ride the same row when it merged
+                // its strip here: each label is a press target, and the press
+                // is synthesized into the pane so the agent's own click
+                // handler acts on it. The agent names itself and its build
+                // with the facts, in the accent that identifies the agent,
+                // and only when there are facts.
+                if let Some(chip) = &agent_chip {
+                    ui.label(
+                        egui::RichText::new(chip)
+                            .size(11.0)
+                            .color(bg_color(ch.accent)),
+                    );
+                    ui.add_space(10.0);
+                }
+                // The row lays out right to left, so walking the facts in
+                // report order would put each one to the left of the last:
+                // the agent's row read backwards. Reverse them and the first
+                // fact the agent named still lands leftmost, where its own
+                // painted row put it.
+                for seg in agent_footer.iter().rev() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(&seg.label)
+                                    .size(11.0)
+                                    .color(bg_color(footer_tone_colour(seg.tone.as_deref(), &ch))),
+                            )
+                            .frame(false),
+                        )
+                        .clicked()
+                    {
+                        footer_click = Some(seg.id.clone());
+                    }
+                    ui.add_space(4.0);
+                }
+                if !agent_footer.is_empty() {
+                    ui.add_space(6.0);
+                }
                 ui.add_sized(
                     [ui.available_width(), CHROME_STATUS_H],
                     egui::Label::new(egui::RichText::new(&status).size(11.0)).truncate(),
@@ -1535,6 +1629,9 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
         });
 
     // Apply.
+    if let Some(id) = footer_click {
+        host.on_agent_footer_click(&id);
+    }
     host.set_queue_input(queue_input);
     if let Some(id) = menu {
         host.on_menu(id);
@@ -1551,6 +1648,9 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
     }
     if account_chip {
         host.on_account_chip();
+    }
+    if remote_chip {
+        host.on_remote_chip();
     }
     // Per-pane close button, top-right of each pane. The host decides which
     // panes want one: every pane of a split tab, and a lone editor pane, whose
@@ -1666,6 +1766,20 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
 #[cfg(test)]
 mod tab_menu_tests {
     use super::*;
+
+    #[test]
+    fn footer_facts_take_the_palette_colour_of_their_tone() {
+        let ch = ChromeColors::dark();
+        assert_eq!(footer_tone_colour(Some("accent"), &ch), ch.accent);
+        assert_eq!(footer_tone_colour(Some("warning"), &ch), ch.warning);
+        assert_eq!(footer_tone_colour(Some("success"), &ch), ch.positive);
+        assert_eq!(footer_tone_colour(Some("error"), &ch), ch.negative);
+        assert_eq!(footer_tone_colour(Some("muted"), &ch), ch.muted);
+        // An older agent sends no tone, and an unknown one must not paint the
+        // fact in the widget default: the row's text colour is the fallback.
+        assert_eq!(footer_tone_colour(None, &ch), ch.text);
+        assert_eq!(footer_tone_colour(Some("sparkle"), &ch), ch.text);
+    }
 
     fn actions(lang: Lang) -> Vec<TabMenuAction> {
         tab_menu_items(lang)
