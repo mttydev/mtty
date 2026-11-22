@@ -2303,6 +2303,8 @@ struct State {
     lang: mtty_ui::i18n::Lang,
     mods: ModifiersState,
     selection: Option<(String, Selection)>,
+    /// The cell a left-drag started on, before motion could change the view.
+    drag_anchor: Option<(String, Selection)>,
     /// A pane context menu open at a screen point, for a specific pane.
     pane_menu: Option<PaneMenu>,
     /// A details-panel context menu open at a screen point (file tree row).
@@ -3875,7 +3877,7 @@ impl State {
         let tab = self.tabs.get(self.active_tab)?;
         let pane = tab.panes.iter().find(|p| &p.id == pane_id)?;
         let (r1, c1, r2, c2) = sel.ordered();
-        Some(pane.term.screen().contents_between(r1, c1, r2, c2))
+        Some(pane.term.screen().contents_between_abs(r1, c1, r2, c2))
     }
 
     /// The selection with SGR colour codes.
@@ -3884,7 +3886,7 @@ impl State {
         let tab = self.tabs.get(self.active_tab)?;
         let pane = tab.panes.iter().find(|p| &p.id == pane_id)?;
         let (r1, c1, r2, c2) = sel.ordered();
-        Some(pane.term.screen().contents_ansi_between(r1, c1, r2, c2))
+        Some(pane.term.screen().contents_ansi_between_abs(r1, c1, r2, c2))
     }
 
     fn copy_selection(&self, ctx: &egui::Context) {
@@ -4433,7 +4435,10 @@ impl State {
                 }
                 if let Some((pid, sel)) = &selection {
                     if pid == id {
-                        for (row, col) in sel.cells(sc) {
+                        let screen = pane.term.screen();
+                        for (row, col) in
+                            sel.visible_cells(sc, sr, screen.history_size(), screen.scroll_offset())
+                        {
                             let s = theme.selection;
                             quads.push(quad(ox, oy, row, col, cw, ch, (s.0, s.1, s.2)));
                         }
@@ -7961,11 +7966,16 @@ impl State {
                     if let Some(tab) = self.tabs.get(self.active_tab) {
                         if let Some(p) = tab.panes.iter().find(|p| p.id == id) {
                             let (r, c) = p.term.size();
+                            let base = p
+                                .term
+                                .screen()
+                                .history_size()
+                                .saturating_sub(p.term.screen().scroll_offset());
                             self.selection = Some((
                                 id,
                                 Selection {
-                                    start: (0, 0),
-                                    end: (r.saturating_sub(1), c.saturating_sub(1)),
+                                    start: (base, 0),
+                                    end: (base + r.saturating_sub(1) as usize, c.saturating_sub(1)),
                                 },
                             ));
                         }
@@ -17870,6 +17880,7 @@ impl ApplicationHandler<HostEvent> for Host {
             lang,
             mods: ModifiersState::empty(),
             selection: None,
+            drag_anchor: None,
             pane_menu: None,
             details_menu: None,
             dragging: false,
@@ -18774,6 +18785,7 @@ impl ApplicationHandler<HostEvent> for Host {
                 MouseButton::Left => {
                     let (px, py) = (state.cursor.0 as f32, state.cursor.1 as f32);
                     if es == ElementState::Pressed {
+                        state.drag_anchor = None;
                         // Clicking a split pane must also move keyboard focus.
                         let scale = state.window.scale_factor() as f32;
                         let divider = state
@@ -18847,6 +18859,32 @@ impl ApplicationHandler<HostEvent> for Host {
                                     None => {
                                         state.dragging = true;
                                         state.selection = None;
+                                        let logical = (px / scale, py / scale);
+                                        let anchor = state
+                                            .pane_rects()
+                                            .into_iter()
+                                            .find(|(_, r)| r.contains(logical.0, logical.1))
+                                            .and_then(|(id, r)| {
+                                                let (row, col) = pane_cell_at(
+                                                    card_inner(r),
+                                                    state.cw,
+                                                    state.ch,
+                                                    logical,
+                                                )?;
+                                                let screen = state.tabs[state.active_tab]
+                                                    .panes
+                                                    .iter()
+                                                    .find(|pane| pane.id == id)?
+                                                    .term
+                                                    .screen();
+                                                let line = (row as isize
+                                                    + screen.history_size() as isize
+                                                    - screen.scroll_offset() as isize)
+                                                    .max(0)
+                                                    as usize;
+                                                Some((id, Selection::cell((line, col))))
+                                            });
+                                        state.drag_anchor = anchor;
                                     }
                                 }
                             }
@@ -18862,6 +18900,7 @@ impl ApplicationHandler<HostEvent> for Host {
                             state.copy_selection(&ctx);
                         }
                         state.dragging = false;
+                        state.drag_anchor = None;
                     }
                 }
                 MouseButton::Right => {
@@ -18941,10 +18980,35 @@ impl ApplicationHandler<HostEvent> for Host {
                         let inner = card_inner(*r);
                         let col = ((px - inner.x * scale) / cw).floor().max(0.0) as u16;
                         let row = ((py - inner.y * scale) / ch).floor().max(0.0) as u16;
-                        let cell = (row, col);
+                        let line = state.tabs[state.active_tab]
+                            .panes
+                            .iter()
+                            .find(|pane| &pane.id == id)
+                            .map(|pane| {
+                                let screen = pane.term.screen();
+                                (row as isize + screen.history_size() as isize
+                                    - screen.scroll_offset() as isize)
+                                    .max(0) as usize
+                            })
+                            .unwrap_or(row as usize);
+                        let cell = (line, col);
+                        let start = state
+                            .drag_anchor
+                            .take()
+                            .filter(|(anchor_id, _)| anchor_id == id)
+                            .map(|(_, selection)| selection);
                         match &mut state.selection {
                             Some((sid, sel)) if sid == id => sel.end = cell,
-                            _ => state.selection = Some((id.clone(), Selection::cell(cell))),
+                            _ => {
+                                let selection = start.unwrap_or(Selection::cell(cell));
+                                state.selection = Some((
+                                    id.clone(),
+                                    Selection {
+                                        start: selection.start,
+                                        end: cell,
+                                    },
+                                ));
+                            }
                         }
                         state.window.request_redraw();
                     }

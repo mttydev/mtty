@@ -5,7 +5,7 @@
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
-use alacritty_terminal::term::cell::Flags;
+use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::Processor;
 
@@ -38,6 +38,21 @@ pub struct CellView {
     /// Width recorded by the VT grid, rather than guessed from Unicode ranges.
     pub wide: bool,
     pub wide_spacer: bool,
+}
+
+fn cell_view(cell: &Cell) -> CellView {
+    CellView {
+        ch: shown(cell.c),
+        fg: cell.fg,
+        bg: cell.bg,
+        inverse: cell.flags.contains(Flags::INVERSE),
+        bold: cell.flags.contains(Flags::BOLD),
+        dim: cell.flags.contains(Flags::DIM),
+        wide: cell.flags.contains(Flags::WIDE_CHAR),
+        wide_spacer: cell
+            .flags
+            .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER),
+    }
 }
 
 struct Dims {
@@ -224,42 +239,48 @@ impl ATerm {
     }
 
     pub fn cell(&self, row: u16, col: u16) -> Option<CellView> {
-        if row as usize >= self.rows || col as usize >= self.cols {
+        if row as usize >= self.rows {
             return None;
         }
         let off = self.term.grid().display_offset() as i32;
-        let cell = &self.term.grid()[Line(row as i32 - off)][Column(col as usize)];
-        Some(CellView {
-            ch: shown(cell.c),
-            fg: cell.fg,
-            bg: cell.bg,
-            inverse: cell.flags.contains(Flags::INVERSE),
-            bold: cell.flags.contains(Flags::BOLD),
-            dim: cell.flags.contains(Flags::DIM),
-            wide: cell.flags.contains(Flags::WIDE_CHAR),
-            wide_spacer: cell
-                .flags
-                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER),
-        })
+        let line = (row as i32 - off + self.history_size() as i32).max(0) as usize;
+        self.cell_abs(line, col)
+    }
+
+    /// A cell on buffer line `b`, counted from the oldest scrollback line.
+    pub fn cell_abs(&self, b: usize, col: u16) -> Option<CellView> {
+        if b >= self.total_lines() || col as usize >= self.cols {
+            return None;
+        }
+        let line = b as i32 - self.history_size() as i32;
+        let cell = &self.term.grid()[Line(line)][Column(col as usize)];
+        Some(cell_view(cell))
     }
 
     /// A drag can start on the trailing cell of a wide character (its right
     /// half). Pull the start back one column so the whole character is copied,
     /// matching a forward drag that ends on the spacer.
-    fn selection_start(&self, row: u16, col: u16) -> u16 {
-        if col > 0 && self.cell(row, col).is_some_and(|cell| cell.wide_spacer) {
+    fn selection_start_abs(&self, row: usize, col: u16) -> u16 {
+        if col > 0 && self.cell_abs(row, col).is_some_and(|cell| cell.wide_spacer) {
             col - 1
         } else {
             col
         }
     }
 
-    /// Text between two cells (inclusive), right-trimmed per line.
+    /// Text between two viewport cells (inclusive), right-trimmed per line.
     pub fn contents_between(&self, r1: u16, c1: u16, r2: u16, c2: u16) -> String {
+        let base = self.history_size().saturating_sub(self.scroll_offset());
+        self.contents_between_abs(base + r1 as usize, c1, base + r2 as usize, c2)
+    }
+
+    /// Text between two scrollback-absolute cells (inclusive), right-trimmed
+    /// per line. `r1`/`r2` are counted from the oldest buffer line.
+    pub fn contents_between_abs(&self, r1: usize, c1: u16, r2: usize, c2: u16) -> String {
         let mut out = String::new();
         for row in r1..=r2 {
             let start = if row == r1 {
-                self.selection_start(row, c1)
+                self.selection_start_abs(row, c1)
             } else {
                 0
             };
@@ -270,7 +291,7 @@ impl ATerm {
             };
             let mut line = String::new();
             for col in start..end.max(start) {
-                if let Some(cell) = self.cell(row, col) {
+                if let Some(cell) = self.cell_abs(row, col) {
                     if !cell.wide_spacer {
                         line.push(cell.ch);
                     }
@@ -286,10 +307,16 @@ impl ATerm {
 
     /// Selection text with SGR colour codes (for "Copy as ANSI Sequence").
     pub fn contents_ansi_between(&self, r1: u16, c1: u16, r2: u16, c2: u16) -> String {
+        let base = self.history_size().saturating_sub(self.scroll_offset());
+        self.contents_ansi_between_abs(base + r1 as usize, c1, base + r2 as usize, c2)
+    }
+
+    /// Selection text with SGR colour codes over scrollback-absolute rows.
+    pub fn contents_ansi_between_abs(&self, r1: usize, c1: u16, r2: usize, c2: u16) -> String {
         let mut out = String::new();
         for row in r1..=r2 {
             let start = if row == r1 {
-                self.selection_start(row, c1)
+                self.selection_start_abs(row, c1)
             } else {
                 0
             };
@@ -301,7 +328,7 @@ impl ATerm {
             let mut line = String::new();
             let (mut cur_fg, mut cur_bg) = (None, None);
             for col in start..end.max(start) {
-                let Some(cell) = self.cell(row, col) else {
+                let Some(cell) = self.cell_abs(row, col) else {
                     continue;
                 };
                 if cell.wide_spacer {
@@ -920,6 +947,18 @@ mod tests {
                 (6, 'c', 1)
             ]
         );
+    }
+
+    #[test]
+    fn absolute_copy_keeps_the_same_lines_across_scrollback() {
+        let mut t = ATerm::new(20, 3, 100);
+        t.process(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\r\n");
+        assert!(t.history_size() >= 2);
+        let copied = t.contents_between_abs(0, 0, 2, 20);
+        assert_eq!(copied, "one\ntwo\nthree");
+        t.set_scrollback(2);
+        assert_eq!(t.contents_between_abs(0, 0, 2, 20), copied);
+        assert_ne!(t.contents_between(0, 0, 2, 20), copied);
     }
 
     #[test]
