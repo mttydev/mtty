@@ -21565,7 +21565,22 @@ impl chrome::Chrome for State {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_footer_chip_text, agent_footer_segments, footer_segment_span};
+    use super::{agent_footer_chip_text, agent_footer_segments, footer_segment_span, pane_canvas};
+
+    /// The colour announced to a pane must be the card's own fill, not the
+    /// terminal palette's background: a page adopts the announced one to sit
+    /// flush inside our padding, and the palette colour would leave the ring
+    /// this fix exists to remove.
+    #[test]
+    fn the_pane_canvas_is_the_card_colour_not_the_terminal_background() {
+        let theme = mtty_ui::theme::Theme::default();
+        assert_eq!(pane_canvas(&theme), theme.chrome().bg);
+        assert_ne!(
+            pane_canvas(&theme),
+            theme.bg,
+            "the announced canvas is what the renderer paints, not the palette"
+        );
+    }
 
     /// A merged-footer payload as miao reports it: visible facts with the
     /// absolute cells a synthesized press lands on.
