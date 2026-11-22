@@ -60,7 +60,7 @@ texts follow the table, once per distinct text.
 | ashpd 0.12.3 | MIT | [github.com/bilelmoussaoui/ashpd](https://github.com/bilelmoussaoui/ashpd) |
 | async-broadcast 0.7.2 | MIT OR Apache-2.0 | [github.com/smol-rs/async-broadcast](https://github.com/smol-rs/async-broadcast) |
 | async-channel 2.5.0 | Apache-2.0 OR MIT | [github.com/smol-rs/async-channel](https://github.com/smol-rs/async-channel) |
-| async-executor 1.14.0 | Apache-2.0 OR MIT | [github.com/smol-rs/async-executor](https://github.com/smol-rs/async-executor) |
+| async-executor 1.14.1 | Apache-2.0 OR MIT | [github.com/smol-rs/async-executor](https://github.com/smol-rs/async-executor) |
 | async-io 2.6.0 | Apache-2.0 OR MIT | [github.com/smol-rs/async-io](https://github.com/smol-rs/async-io) |
 | async-lock 3.4.2 | Apache-2.0 OR MIT | [github.com/smol-rs/async-lock](https://github.com/smol-rs/async-lock) |
 | async-process 2.5.0 | Apache-2.0 OR MIT | [github.com/smol-rs/async-process](https://github.com/smol-rs/async-process) |
@@ -185,7 +185,7 @@ texts follow the table, once per distinct text.
 | foreign-types 0.5.0 | MIT/Apache-2.0 | [github.com/sfackler/foreign-types](https://github.com/sfackler/foreign-types) |
 | foreign-types-macros 0.2.4 | MIT/Apache-2.0 | [github.com/sfackler/foreign-types](https://github.com/sfackler/foreign-types) |
 | foreign-types-shared 0.3.1 | MIT/Apache-2.0 | [github.com/sfackler/foreign-types](https://github.com/sfackler/foreign-types) |
-| form_urlencoded 1.2.2 | MIT OR Apache-2.0 | [github.com/servo/rust-url](https://github.com/servo/rust-url) |
+| form_urlencoded 1.2.3 | MIT OR Apache-2.0 | [github.com/servo/rust-url](https://github.com/servo/rust-url) |
 | futures-channel 0.3.34 | MIT OR Apache-2.0 | [github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) |
 | futures-core 0.3.34 | MIT OR Apache-2.0 | [github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) |
 | futures-executor 0.3.34 | MIT OR Apache-2.0 | [github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) |
@@ -558,7 +558,7 @@ texts follow the table, once per distinct text.
 | universal-hash 0.5.1 | MIT OR Apache-2.0 | [github.com/RustCrypto/traits](https://github.com/RustCrypto/traits) |
 | untrusted 0.9.0 | ISC | [github.com/briansmith/untrusted](https://github.com/briansmith/untrusted) |
 | ureq 2.12.1 | MIT OR Apache-2.0 | [github.com/algesten/ureq](https://github.com/algesten/ureq) |
-| url 2.5.8 | MIT OR Apache-2.0 | [github.com/servo/rust-url](https://github.com/servo/rust-url) |
+| url 2.5.9 | MIT OR Apache-2.0 | [github.com/servo/rust-url](https://github.com/servo/rust-url) |
 | utf8_iter 1.0.4 | Apache-2.0 OR MIT | [github.com/hsivonen/utf8_iter](https://github.com/hsivonen/utf8_iter) |
 | uuid 1.26.1 | Apache-2.0 OR MIT | [github.com/uuid-rs/uuid](https://github.com/uuid-rs/uuid) |
 | vte 0.15.0 | Apache-2.0 OR MIT | [github.com/alacritty/vte](https://github.com/alacritty/vte) |
@@ -1335,7 +1335,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-This exact text is filed by 135 crates, among them ahash 0.8.12, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.0, … zeno 0.2.3.
+This exact text is filed by 135 crates, among them ahash 0.8.12, arrayvec 0.7.8, async-channel 2.5.0, async-executor 1.14.1, … zeno 0.2.3.
 
 ```text
 Apache License
@@ -9670,7 +9670,7 @@ NOT FOUND
 
 ### MIT
 
-This exact text is filed by 74 crates, among them adler2 2.0.1, anyhow 1.0.104, async-channel 2.5.0, async-executor 1.14.0, … zvariant_utils 4.2.0.
+This exact text is filed by 74 crates, among them adler2 2.0.1, anyhow 1.0.104, async-channel 2.5.0, async-executor 1.14.1, … zvariant_utils 4.2.0.
 
 ```text
 Permission is hereby granted, free of charge, to any
@@ -11999,7 +11999,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-This exact text is filed by form_urlencoded 1.2.2.
+This exact text is filed by form_urlencoded 1.2.3.
 
 ```text
 Copyright (c) 2013-2016 The rust-url developers
@@ -12301,7 +12301,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-This exact text is filed by idna 1.1.0, percent-encoding 2.3.2, url 2.5.8.
+This exact text is filed by idna 1.1.0, percent-encoding 2.3.2, url 2.5.9.
 
 ```text
 Copyright (c) 2013-2025 The rust-url developers
