@@ -9712,6 +9712,7 @@ impl State {
             .cell
             .and_then(|(r, _)| self.active_line_info(&menu.pane, r));
         let mut open = true;
+        let mut menu_rect = egui::Rect::NOTHING;
         egui::Area::new(egui::Id::new("pane-context-menu"))
             .order(egui::Order::Foreground)
             .fixed_pos(egui::pos2(clamped.0, clamped.1))
@@ -9791,10 +9792,19 @@ impl State {
                         PaneMenuAction::ClearScrollback,
                     );
                 });
+                menu_rect = ui.min_rect();
             });
-        // Escape closes the menu; a click outside is handled by egui (no item
-        // was chosen, and the area loses its popup).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            open = false;
+        }
+        // A primary press outside the menu dismisses it; the secondary press
+        // that opened it (or a press on an item) does not.
+        if ctx.input(|i| {
+            i.pointer.primary_pressed()
+                && i.pointer
+                    .interact_pos()
+                    .is_some_and(|p| !menu_rect.contains(p))
+        }) {
             open = false;
         }
         let action = chosen.get();
