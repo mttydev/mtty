@@ -2976,10 +2976,19 @@ impl State {
                 .filter(|dir| dir.as_path() != std::path::Path::new("/"))
                 .or_else(mtty_config::home_dir)
         });
+        // The page colour the card paints behind and around the pane. A
+        // full-screen TUI fills every cell itself, so without this it painted
+        // its own page over the grid and left a ring of host background
+        // between the two.
+        let Rgb(cr, cg, cb) = self.theme.chrome().bg;
         // Both names: installed hooks and miao read the former one (ADR 0032).
         let env = vec![
             ("MTTY_PANE_ID".to_string(), id.clone()),
             ("MIAOTTY_PANE_ID".to_string(), id.clone()),
+            (
+                "MTTY_TERM_BG".to_string(),
+                format!("#{cr:02x}{cg:02x}{cb:02x}"),
+            ),
             // The merged-footer capability: only a host that answers a press
             // on its own chrome with a synthesized mouse report may set it,
             // so an agent under an older host keeps painting its strip.
