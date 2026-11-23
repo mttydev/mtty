@@ -85,9 +85,9 @@ enum UpdateInstall {
 const STATUS_H: f32 = 22.0;
 const SIDEBAR_W: f32 = 200.0;
 const DETAILS_W: f32 = 300.0;
-const CARD_MARGIN: f32 = 6.0;
+const CARD_MARGIN: f32 = 4.0;
 const CARD_RADIUS: f32 = 9.0;
-const CARD_PAD: f32 = 8.0;
+const CARD_PAD: f32 = 6.0;
 const BLINK: Duration = Duration::from_millis(530);
 const IMAGE_FRAME_MS: u64 = 100;
 /// How long a candidate window title must hold steady before it reaches the
@@ -2862,7 +2862,7 @@ impl State {
         for tab in &mut self.tabs {
             for (id, r) in tab.layout.rects(area) {
                 if let Some(pane) = tab.panes.iter_mut().find(|p| p.id == id) {
-                    let inner = card_inner(r);
+                    let inner = grid_rect(card_inner(r), ch / scale);
                     let cols = ((inner.w * scale) / cw).floor().max(ATerm::MIN_COLS as f32) as u16;
                     let rows = ((inner.h * scale) / ch).floor().max(1.0) as u16;
                     pane.term.set_cell_size(cw as u16, ch as u16);
@@ -2908,7 +2908,7 @@ impl State {
     fn new_pane_size(&self) -> (u16, u16) {
         let scale = self.window.scale_factor() as f32;
         let (cw, ch) = (self.cw * scale, self.ch * scale);
-        let area = card_inner(self.grid_area());
+        let area = grid_rect(card_inner(self.grid_area()), self.ch);
         let cols = ((area.w * scale) / cw).floor().max(ATerm::MIN_COLS as f32) as u16;
         let rows = ((area.h * scale) / ch).floor().max(1.0) as u16;
         (cols, rows)
@@ -3794,7 +3794,7 @@ impl State {
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             for (id, r) in &rects {
                 if let Some(pane) = tab.panes.iter_mut().find(|p| &p.id == id) {
-                    let inner = card_inner(*r);
+                    let inner = grid_rect(card_inner(*r), ch / scale);
                     let cols = ((inner.w * scale) / cw).floor().max(ATerm::MIN_COLS as f32) as u16;
                     let rows = ((inner.h * scale) / ch).floor().max(1.0) as u16;
                     pane.term.set_cell_size(cw as u16, ch as u16);
@@ -3844,7 +3844,7 @@ impl State {
                 && py >= r.y * scale
                 && py < (r.y + r.h) * scale
         })?;
-        let inner = card_inner(r);
+        let inner = grid_rect(card_inner(r), self.ch);
         let col = ((px - inner.x * scale) / (self.cw * scale))
             .floor()
             .max(0.0) as u16;
@@ -4077,7 +4077,7 @@ impl State {
         }
         let cw = self.cw * scale;
         let ch = self.ch * scale;
-        let inner = card_inner(r);
+        let inner = grid_rect(card_inner(r), self.ch);
         let col = ((px - inner.x * scale) / cw).floor().max(0.0) as u16 + 1;
         let row = ((py - inner.y * scale) / ch).floor().max(0.0) as u16 + 1;
         let Some(seq) = mouse_report(sgr, button, pressed, motion, col, row) else {
@@ -4419,7 +4419,7 @@ impl State {
                     }
                     continue;
                 };
-                let inner = card_inner(*r);
+                let inner = grid_rect(card_inner(*r), ch / scale);
                 let cols = ((inner.w * scale) / cw).floor().max(ATerm::MIN_COLS as f32) as u16;
                 let rows = ((inner.h * scale) / ch).floor().max(1.0) as u16;
                 pane.term.resize(rows, cols);
@@ -12968,7 +12968,7 @@ impl State {
     fn spawn_transport_pane(&self, conn: mtty_ui::transport::Connection) -> Option<Pane> {
         let scale = self.window.scale_factor() as f32;
         let (cw, ch) = (self.cw * scale, self.ch * scale);
-        let area = card_inner(self.grid_area());
+        let area = grid_rect(card_inner(self.grid_area()), self.ch);
         let cols = ((area.w * scale) / cw).floor().max(1.0) as u16;
         let rows = ((area.h * scale) / ch).floor().max(1.0) as u16;
         let id = gen_id();
@@ -14545,7 +14545,7 @@ impl State {
         if ed.markdown.is_some() {
             return None;
         }
-        let inner = card_inner(r);
+        let inner = grid_rect(card_inner(r), self.ch);
         let col = ((x - inner.x) / self.cw).floor();
         let row = ((y - inner.y) / self.ch).floor();
         let col = (col - ed.gutter() as f32).max(0.0) as usize;
@@ -14627,7 +14627,7 @@ impl State {
                     .into_iter()
                     .find(|(_, r)| r.contains(x, y))
                 {
-                    let inner = card_inner(outer);
+                    let inner = grid_rect(card_inner(outer), self.ch);
                     let cell = pane_cell_at(inner, self.cw, self.ch, (x, y));
                     self.pane_menu = Some(PaneMenu {
                         pane: id,
@@ -18951,7 +18951,7 @@ impl ApplicationHandler<HostEvent> for Host {
                                 .into_iter()
                                 .find(|(_, r)| r.contains(logical.0, logical.1))
                             {
-                                let inner = card_inner(outer);
+                                let inner = grid_rect(card_inner(outer), state.ch);
                                 let cell = pane_cell_at(inner, state.cw, state.ch, logical);
                                 state.pane_menu = Some(PaneMenu {
                                     pane: id,
@@ -19010,7 +19010,7 @@ impl ApplicationHandler<HostEvent> for Host {
                     }) {
                         let cw = state.cw * scale;
                         let ch = state.ch * scale;
-                        let inner = card_inner(*r);
+                        let inner = grid_rect(card_inner(*r), state.ch);
                         let col = ((px - inner.x * scale) / cw).floor().max(0.0) as u16;
                         let row = ((py - inner.y * scale) / ch).floor().max(0.0) as u16;
                         let line = state.tabs[state.active_tab]
@@ -20005,7 +20005,7 @@ fn draw_editor(
     r: Rect,
     f: EditorFrame<'_>,
 ) -> PaneDraw {
-    let inner = card_inner(r);
+    let inner = grid_rect(card_inner(r), f.ch / f.scale);
     let cols = ((inner.w * f.scale) / f.cw).floor().max(1.0) as usize;
     let rows = ((inner.h * f.scale) / f.ch).floor().max(1.0) as usize;
     ed.resize(cols, rows);
@@ -20153,6 +20153,29 @@ fn card_inner(r: Rect) -> Rect {
         y: card.y + CARD_PAD,
         w: (card.w - CARD_PAD * 2.0).max(1.0),
         h: (card.h - CARD_PAD * 2.0).max(1.0),
+    }
+}
+
+/// The cell grid a card's padded area actually holds: the rows the height
+/// divides into, anchored to the card's bottom edge.
+///
+/// Top-aligning the grid put the sub-cell remainder below the last row, so the
+/// inset under a full-screen prompt was `CARD_PAD + remainder` — anything from
+/// the padding itself up to a whole extra row, and it changed with the window
+/// height. Trimming the padding then only fed the remainder: the block grew
+/// instead of the text moving down. Anchoring to the bottom keeps the inset at
+/// `CARD_PAD` and moves the remainder above the first row, where a scrolled
+/// transcript hides it.
+fn grid_rect(inner: Rect, cell_h: f32) -> Rect {
+    if cell_h <= 0.0 {
+        return inner;
+    }
+    let rows = (inner.h / cell_h).floor().max(1.0);
+    let h = (rows * cell_h).min(inner.h);
+    Rect {
+        y: inner.y + inner.h - h,
+        h,
+        ..inner
     }
 }
 
@@ -21662,7 +21685,76 @@ impl chrome::Chrome for State {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_footer_chip_text, agent_footer_segments, footer_segment_span, pane_canvas};
+    use super::{
+        agent_footer_chip_text, agent_footer_segments, card_inner, card_rect, footer_segment_span,
+        grid_rect, pane_canvas, Rect, CARD_MARGIN, CARD_PAD,
+    };
+
+    /// The inset under a full-screen page is the card's padding alone.
+    ///
+    /// The grid used to be top-anchored, so a height that did not divide by the
+    /// cell height left its remainder below the last row: the visible inset was
+    /// `CARD_PAD + remainder`, up to a whole extra row, and it changed with the
+    /// window height. Anchoring to the bottom keeps that number fixed and moves
+    /// the remainder above the first row.
+    #[test]
+    fn the_grid_keeps_the_card_padding_below_the_last_row() {
+        let pane = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
+        let inner = card_inner(pane);
+        // A cell height that leaves a remainder of more than half a row.
+        let cell = 15.0;
+        let grid = grid_rect(inner, cell);
+        assert_eq!(
+            grid.y + grid.h,
+            inner.y + inner.h,
+            "the grid ends where the padding begins"
+        );
+        assert_eq!(
+            (grid.h / cell).fract(),
+            0.0,
+            "the grid holds whole rows: {}",
+            grid.h / cell
+        );
+        let card = card_rect(pane);
+        let below_page = card.y + card.h - (grid.y + grid.h);
+        assert_eq!(
+            below_page, CARD_PAD,
+            "the inset under the page is the padding, never the padding plus a remainder"
+        );
+    }
+
+    /// The card keeps a real ring: the border, the padding and the margin all
+    /// survive the trim, so text never touches the rounded edge.
+    #[test]
+    fn the_card_keeps_a_ring_around_the_grid() {
+        let pane = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 400.0,
+            h: 300.0,
+        };
+        let card = card_rect(pane);
+        let inner = card_inner(pane);
+        assert_eq!(
+            card.x - pane.x,
+            CARD_MARGIN,
+            "the card is inset by its margin"
+        );
+        assert_eq!(
+            inner.x - card.x,
+            CARD_PAD,
+            "the text is inset by the padding"
+        );
+        const {
+            assert!(CARD_PAD >= 6.0, "text never sits on the rounded edge");
+            assert!(CARD_MARGIN >= 4.0, "cards stay visually separate");
+        }
+    }
 
     /// The colour announced to a pane must be the card's own fill, not the
     /// terminal palette's background: a page adopts the announced one to sit
