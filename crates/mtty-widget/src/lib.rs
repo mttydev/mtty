@@ -21750,8 +21750,10 @@ mod tests {
             CARD_PAD,
             "the text is inset by the padding"
         );
-        assert!(CARD_PAD >= 6.0, "text never sits on the rounded edge");
-        assert!(CARD_MARGIN >= 4.0, "cards stay visually separate");
+        const {
+            assert!(CARD_PAD >= 6.0, "text never sits on the rounded edge");
+            assert!(CARD_MARGIN >= 4.0, "cards stay visually separate");
+        }
     }
 
     /// The colour announced to a pane must be the card's own fill, not the
