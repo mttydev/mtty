@@ -3824,11 +3824,43 @@ impl MiaottyApp {
             let mut out = Vec::new();
             let has_selection = self.selection.is_some();
             if self.palette.is_none() {
-                ctx.input(|i| {
-                    for ev in &i.events {
+                // IME-committed text (Chinese, full-width punctuation) arrives
+                // as `Event::Ime(Commit)`, and a platform may repeat the same
+                // string as a plain `Event::Text`. Forward each committed
+                // string once - where the commit arrived - and swallow
+                // repeats, so quotes and characters never drop or double.
+                let events = ctx.input(|i| i.events.clone());
+                let mut delivered = vec![false; events.len()];
+                for (index, ev) in events.iter().enumerate() {
+                    if let egui::Event::Ime(egui::ImeEvent::Commit(text)) = ev {
+                        delivered[index] = true;
+                        encode_input(
+                            &egui::Event::Text(text.clone()),
+                            app_cursor,
+                            bracketed,
+                            kitty,
+                            has_selection,
+                            &mut out,
+                        );
+                        for (other, candidate) in events.iter().enumerate() {
+                            if other != index
+                                && !delivered[other]
+                                && matches!(
+                                    candidate,
+                                    egui::Event::Text(candidate_text) if candidate_text == text
+                                )
+                            {
+                                delivered[other] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                for (index, ev) in events.iter().enumerate() {
+                    if !delivered[index] {
                         encode_input(ev, app_cursor, bracketed, kitty, has_selection, &mut out);
                     }
-                });
+                }
             }
             if !out.is_empty() {
                 self.tabs[ti].panes[pi].term.write(&out);
