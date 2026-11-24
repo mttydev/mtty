@@ -28,6 +28,9 @@ jobs:
 
       - name: Sign & notarize (macOS, optional)
         if: runner.os == 'macOS'
+        # Broken or absent Apple credentials must not block the release: the
+        # step below ships an ad-hoc signed build when signing is skipped.
+        continue-on-error: true
         env:
           APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}

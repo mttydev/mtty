@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=miaotty
+GenericName=Terminal
+Exec=miaotty
+Terminal=false
+Categories=Development;System;TerminalEmulator;
+Keywords=terminal;shell;agent;
