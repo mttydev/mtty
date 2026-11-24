@@ -1067,6 +1067,12 @@ impl MiaottyApp {
 
 impl eframe::App for MiaottyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The OS IME must be allowed on the window, or every composed
+        // character (Chinese, full-width quotes) is swallowed by winit before
+        // it reaches this app: commits arrive only as `Event::Ime`, which the
+        // input loop forwards to the pane's PTY. egui-winit debounces the
+        // command, so re-sending it every frame is free.
+        ctx.send_viewport_cmd(egui::viewport::ViewportCommand::IMEAllowed(true));
         // Drain output for every tab (keeps channels from growing unbounded).
         let mut changed = false;
         for tab in &mut self.tabs {
