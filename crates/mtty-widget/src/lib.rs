@@ -954,6 +954,17 @@ fn pane_cell_at(inner: Rect, cw: f32, ch: f32, at: (f32, f32)) -> Option<(u16, u
     Some((row, col))
 }
 
+/// The rect the cell grid is drawn in: the card's inner rect tucked to its
+/// bottom edge, so whole rows end on the padding ([`grid_rect`]).
+///
+/// Cell hit-testing has to read this origin. The press that anchors a
+/// selection used the card's inner top while the motion that extends it used
+/// the grid's, so a point inside the remainder band counted as the row below
+/// on press and the row above on motion: a still click selected two rows.
+fn pane_grid(outer: Rect, cell_h: f32) -> Rect {
+    grid_rect(card_inner(outer), cell_h)
+}
+
 fn app_window<'a>(title: impl Into<egui::WidgetText>, ctx: &egui::Context) -> egui::Window<'a> {
     let screen = ctx.screen_rect();
     egui::Window::new(title)
@@ -18899,7 +18910,7 @@ impl ApplicationHandler<HostEvent> for Host {
                                             .find(|(_, r)| r.contains(logical.0, logical.1))
                                             .and_then(|(id, r)| {
                                                 let (row, col) = pane_cell_at(
-                                                    card_inner(r),
+                                                    pane_grid(r, state.ch),
                                                     state.cw,
                                                     state.ch,
                                                     logical,
@@ -19010,7 +19021,7 @@ impl ApplicationHandler<HostEvent> for Host {
                     }) {
                         let cw = state.cw * scale;
                         let ch = state.ch * scale;
-                        let inner = grid_rect(card_inner(*r), state.ch);
+                        let inner = pane_grid(*r, state.ch);
                         let col = ((px - inner.x * scale) / cw).floor().max(0.0) as u16;
                         let row = ((py - inner.y * scale) / ch).floor().max(0.0) as u16;
                         let line = state.tabs[state.active_tab]
@@ -19032,16 +19043,24 @@ impl ApplicationHandler<HostEvent> for Host {
                             .map(|(_, selection)| selection);
                         match &mut state.selection {
                             Some((sid, sel)) if sid == id => sel.end = cell,
-                            _ => {
-                                let selection = start.unwrap_or(Selection::cell(cell));
-                                state.selection = Some((
-                                    id.clone(),
-                                    Selection {
-                                        start: selection.start,
-                                        end: cell,
-                                    },
-                                ));
-                            }
+                            _ => match start {
+                                // A press that never leaves its cell is a click:
+                                // nothing is selected until it crosses one.
+                                Some(selection) if selection.start == cell => {}
+                                Some(selection) => {
+                                    state.selection = Some((
+                                        id.clone(),
+                                        Selection {
+                                            start: selection.start,
+                                            end: cell,
+                                        },
+                                    ));
+                                }
+                                // No anchor: the press landed in the card's top
+                                // inset, outside the grid. The first move starts
+                                // the selection there.
+                                None => state.selection = Some((id.clone(), Selection::cell(cell))),
+                            },
                         }
                         state.window.request_redraw();
                     }
@@ -21687,7 +21706,7 @@ impl chrome::Chrome for State {
 mod tests {
     use super::{
         agent_footer_chip_text, agent_footer_segments, card_inner, card_rect, footer_segment_span,
-        grid_rect, pane_canvas, Rect, CARD_MARGIN, CARD_PAD,
+        grid_rect, pane_canvas, pane_grid, Rect, CARD_MARGIN, CARD_PAD,
     };
 
     /// The inset under a full-screen page is the card's padding alone.
@@ -21725,6 +21744,41 @@ mod tests {
         assert_eq!(
             below_page, CARD_PAD,
             "the inset under the page is the padding, never the padding plus a remainder"
+        );
+    }
+
+    /// A press and the motion that follows it read one grid. The grid is
+    /// bottom-anchored, so the remainder band above its first row belongs to no
+    /// row; reading the card's inner top instead put that band on the row
+    /// below, and a click with no drag anchored one row under the cell the next
+    /// move saw. The range between them painted two blank rows.
+    #[test]
+    fn a_selection_reads_the_grid_origin() {
+        let pane = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
+        let inner = card_inner(pane);
+        let cell = 15.0;
+        let grid = pane_grid(pane, cell);
+        assert!(grid.y > inner.y, "the grid is bottom-anchored");
+        let band = (grid.x + 4.0, inner.y + 1.0);
+        assert_eq!(
+            pane_cell_at(grid, 10.0, cell, band),
+            None,
+            "the remainder band above the grid is on no row"
+        );
+        assert_eq!(
+            pane_cell_at(inner, 10.0, cell, band),
+            Some((0, 0)),
+            "the card's top reads the band as a row"
+        );
+        let first = (grid.x + 4.0, grid.y + cell / 2.0);
+        assert_eq!(
+            pane_cell_at(pane_grid(pane, cell), 10.0, cell, first),
+            Some((0, 0))
         );
     }
 
