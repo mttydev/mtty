@@ -31,6 +31,10 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 enum HostEvent {
     Wake,
     Hotkey,
+    /// A character an IME committed without a composition phase (Windows
+    /// `WM_IME_CHAR`; see `ime_char`).
+    #[cfg(windows)]
+    ImeChar(char),
     /// A command from the OS menu bar (macOS, inside an app bundle).
     #[cfg(target_os = "macos")]
     /// The flag says the menu item's shortcut was pressed, not clicked.
@@ -46,6 +50,8 @@ mod command_history;
 mod data_preview;
 mod drag;
 mod editor_pane;
+#[cfg(windows)]
+mod ime_char;
 mod live_markdown;
 mod lsp_remote;
 #[cfg(target_os = "macos")]
@@ -3811,6 +3817,32 @@ impl State {
                     pane.term.set_cell_size(cw as u16, ch as u16);
                     pane.term.resize(rows, cols);
                 }
+            }
+        }
+    }
+
+    /// Deliver IME-committed text to the focused surface. Composition
+    /// commits (`Ime::Commit`) and quick-commits without a composition
+    /// phase (Windows `WM_IME_CHAR`, see `ime_char`) both land here.
+    fn deliver_ime_commit(&mut self, text: &str) {
+        // A commit can carry a control character (Enter/Tab/…); those are
+        // already sent by the key handler, so only forward real text.
+        let control_only = !text.is_empty() && text.chars().all(char::is_control);
+        self.preedit.clear();
+        if !control_only && !self.egui_ctx.wants_keyboard_input() {
+            if self.read_only {
+                // Read-only blocks typing into any pane.
+            } else if let Some(ed) = self.active_editor_mut() {
+                if ed.markdown.is_some() {
+                    // egui owns IME commits in the live writing surface.
+                } else if ed.is_view_only() {
+                    self.large_edit_offer = Some(ed.id.clone());
+                } else if ed.vim.is_none() || ed.vim.as_ref().is_some_and(|v| v.is_insert()) {
+                    ed.type_text(text);
+                }
+                self.window.request_redraw();
+            } else {
+                self.write_input(text.as_bytes());
             }
         }
     }
@@ -17777,6 +17809,10 @@ impl ApplicationHandler<HostEvent> for Host {
             Err(e) => return startup_failure(event_loop, "could not create a window", e),
         };
         window.set_ime_allowed(true);
+        // Observe IME quick-commits that winit 0.30 never surfaces (see
+        // `ime_char`).
+        #[cfg(windows)]
+        ime_char::install(&window, self.proxy.clone());
         #[cfg(target_os = "macos")]
         if unified_titlebar() {
             disable_native_titlebar_move(&window);
@@ -18230,6 +18266,9 @@ impl ApplicationHandler<HostEvent> for Host {
                 state.window.set_visible(true);
                 state.window.focus_window();
             }
+            // IME quick-commit (Windows): see `ime_char`.
+            #[cfg(windows)]
+            HostEvent::ImeChar(c) => state.deliver_ime_commit(&c.to_string()),
             // OS menu bar command.
             #[cfg(target_os = "macos")]
             HostEvent::Menu(id, by_key) => {
@@ -18776,27 +18815,7 @@ impl ApplicationHandler<HostEvent> for Host {
                 }
             }
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
-                // A commit can carry a control character (Enter/Tab/…); those are
-                // already sent by the key handler, so only forward real text.
-                let control_only = !text.is_empty() && text.chars().all(char::is_control);
-                state.preedit.clear();
-                if !control_only && !state.egui_ctx.wants_keyboard_input() {
-                    if state.read_only {
-                        // Read-only blocks typing into any pane.
-                    } else if let Some(ed) = state.active_editor_mut() {
-                        if ed.markdown.is_some() {
-                            // egui owns IME commits in the live writing surface.
-                        } else if ed.is_view_only() {
-                            state.large_edit_offer = Some(ed.id.clone());
-                        } else if ed.vim.is_none() || ed.vim.as_ref().is_some_and(|v| v.is_insert())
-                        {
-                            ed.type_text(&text);
-                        }
-                        state.window.request_redraw();
-                    } else {
-                        state.write_input(text.as_bytes());
-                    }
-                }
+                state.deliver_ime_commit(&text);
             }
             WindowEvent::DroppedFile(path) => {
                 // The drop point: a drag sends no pointer motion, so the

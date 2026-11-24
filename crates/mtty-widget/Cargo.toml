@@ -37,6 +37,7 @@ pulldown-cmark = { version = "0.12", default-features = false }
 # events arrive then). Already in the tree through winit.
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
+  "Win32_UI_Shell",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
