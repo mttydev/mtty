@@ -4512,9 +4512,31 @@ impl State {
                             theme.color(cell.fg, false)
                         };
                         let (px, py) = (ox + col as f32 * cw, oy + row as f32 * ch);
+                        // Applications draw a rule with a box glyph or with the
+                        // ASCII `|`. The pipe is the one that keeps its width on
+                        // every console, which is why miao uses it for the rule
+                        // beside its sidebar, but its stem is short for the same
+                        // reason the box glyphs are. Fill it only where the cells
+                        // above or below carry the same glyph, so a pipe inside
+                        // prose keeps its own shape and a rule becomes solid.
+                        let joined = |at: u16| {
+                            pane.term
+                                .screen()
+                                .cell(at, col)
+                                .is_some_and(|neighbour| neighbour.ch == cell.ch)
+                        };
+                        let vertical = match row {
+                            0 => sr > 1 && joined(1),
+                            last if last + 1 >= sr => joined(row - 1),
+                            _ => joined(row - 1) || joined(row + 1),
+                        };
                         match cell.ch {
-                            '│' | '┃' => {
-                                let w = if cell.ch == '┃' { 2.0 } else { 1.0 };
+                            '│' | '┃' | '║' => {
+                                let w = if matches!(cell.ch, '┃' | '║') {
+                                    2.0
+                                } else {
+                                    1.0
+                                };
                                 let left = (px + cw / 2.0 - w / 2.0).round();
                                 quads.push(Quad::new(
                                     (left, py),
@@ -4522,12 +4544,24 @@ impl State {
                                     (ink.0, ink.1, ink.2, 255),
                                 ));
                             }
-                            '─' | '━' => {
-                                let h = if cell.ch == '━' { 2.0 } else { 1.0 };
+                            '─' | '━' | '═' => {
+                                let h = if matches!(cell.ch, '━' | '═') {
+                                    2.0
+                                } else {
+                                    1.0
+                                };
                                 let top = (py + ch / 2.0 - h / 2.0).round();
                                 quads.push(Quad::new(
                                     (px, top),
                                     (px + cw, top + h),
+                                    (ink.0, ink.1, ink.2, 255),
+                                ));
+                            }
+                            '|' if vertical => {
+                                let left = (px + cw / 2.0 - 0.5).round();
+                                quads.push(Quad::new(
+                                    (left, py),
+                                    (left + 1.0, py + ch),
                                     (ink.0, ink.1, ink.2, 255),
                                 ));
                             }
