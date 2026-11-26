@@ -3290,6 +3290,10 @@ impl State {
 
     /// The active pane's inner rect and cursor cell, for cursor-anchored
     /// overlays (IME preedit). `None` while the view is scrolled back.
+    ///
+    /// The cursor is the last *settled* one: while a frame is still arriving
+    /// the live cursor is wherever that frame has painted so far, and an
+    /// overlay anchored on it jumps across the pane.
     fn active_cursor(&self) -> Option<(Rect, (u16, u16))> {
         if let Some(ed) = self.active_editor() {
             let inner = self.active_inner()?;
@@ -3307,7 +3311,7 @@ impl State {
             return None;
         }
         let inner = self.active_inner()?;
-        Some((inner, pane.term.screen().cursor_position()))
+        Some((inner, pane.term.settled_cursor()))
     }
 
     fn cancel_hints(&mut self) {
