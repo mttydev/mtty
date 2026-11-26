@@ -83,6 +83,20 @@ cards and sidebars — follows the preset instead of the neutral dark chrome. Th
 named themes `solarized`/`solarized-dark` and `tokyo-night`/`tokyonight` are
 accepted too, and an explicit `[colors]` block overrides any named theme.
 
+### Group backgrounds
+
+`[groups]` gives a tab/session group its own chrome background. The key is the
+group name shown in the sidebar and the `[group]` tab prefix; the value is a
+`#rrggbb` colour. The colour fills that group's tab chips and session rows; the
+active row is brightened, and hovering brightens it a little less. A group with
+no entry keeps the theme's fill, so the default look is unchanged.
+
+```toml
+[groups]
+miao = "#3a2f4a"
+embrix = "#20343a"
+```
+
 ### Badges
 
 `[badges]` chooses which agent states show on tabs: the state marker — an empty
