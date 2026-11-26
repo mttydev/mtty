@@ -4566,8 +4566,10 @@ impl State {
                         (0x4c, 0x56, 0x6a, 200),
                     ));
                 }
-                // Cursor (only on the focused pane, at the bottom).
-                let cur = pane.term.screen().cursor_position();
+                // Cursor (only on the focused pane, at the bottom). The
+                // settled cursor: a frame still arriving leaves the live one
+                // wherever it has painted, and the block twitched with it.
+                let cur = pane.term.settled_cursor();
                 let show = id == &active_id
                     && self.cursor_on
                     && pane.scroll == 0
