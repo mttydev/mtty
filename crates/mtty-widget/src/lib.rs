@@ -2309,6 +2309,8 @@ struct State {
     tabs: Vec<Tab>,
     active_tab: usize,
     theme: Theme,
+    /// `[groups]`: one chrome background per tab/session group name.
+    groups: std::collections::BTreeMap<String, mtty_ui::theme::Rgb>,
     rules: mtty_config::view::RuleSet,
     /// `views.json`'s modification time when last loaded, and when it was
     /// last checked: edits apply without a restart.
@@ -17953,6 +17955,11 @@ impl ApplicationHandler<HostEvent> for Host {
             tabs: Vec::new(),
             active_tab: 0,
             theme,
+            groups: cfg
+                .groups
+                .iter()
+                .map(|(name, color)| (name.clone(), mtty_ui::theme::Rgb(color.0, color.1, color.2)))
+                .collect(),
             rules: mtty_config::view::RuleSet::load(),
             rules_mtime: views_mtime(),
             rules_checked: Instant::now(),
@@ -21275,6 +21282,9 @@ impl chrome::Chrome for State {
     }
     fn theme(&self) -> Theme {
         self.theme.clone()
+    }
+    fn group_colors(&self) -> std::collections::BTreeMap<String, mtty_ui::theme::Rgb> {
+        self.groups.clone()
     }
     fn details_is_queue(&self) -> bool {
         self.details_tab == 6

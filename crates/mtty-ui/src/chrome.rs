@@ -21,6 +21,49 @@ pub fn bg_color(c: Rgb) -> egui::Color32 {
     egui::Color32::from_rgb(c.0, c.1, c.2)
 }
 
+/// A tab chip or session row fill: the group's `[groups]` colour when one is
+/// configured, otherwise the theme's active / hover / transparent fill. The
+/// active and hovered states brighten the same colour so the group stays
+/// recognisable instead of changing hue with state.
+pub fn group_background(
+    ch: &ChromeColors,
+    color: Option<Rgb>,
+    active: bool,
+    hovered: bool,
+) -> egui::Color32 {
+    let Some(color) = color else {
+        return match (active, hovered) {
+            (true, _) => bg_color(ch.active),
+            (false, true) => bg_color(ch.hover),
+            (false, false) => egui::Color32::TRANSPARENT,
+        };
+    };
+    let base = bg_color(color);
+    match (active, hovered) {
+        (true, _) => base.gamma_multiply(1.18),
+        (false, true) => base.gamma_multiply(1.10),
+        (false, false) => base,
+    }
+}
+
+/// Publish the host's `[groups]` map for this frame. The tab bar and sidebar
+/// read it from the context, so their signatures (and every caller that drives
+/// them directly) stay unchanged.
+pub fn publish_group_colors(ctx: &egui::Context, colors: std::collections::BTreeMap<String, Rgb>) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("mtty.group.colors"), colors));
+}
+
+fn configured_group_color(ui: &egui::Ui, group: Option<&str>) -> Option<Rgb> {
+    let group = group?;
+    ui.ctx()
+        .data_mut(|data| {
+            data.get_temp::<std::collections::BTreeMap<String, Rgb>>(egui::Id::new(
+                "mtty.group.colors",
+            ))
+        })
+        .and_then(|colors| colors.get(group).copied())
+}
+
 pub fn section(ch: &ChromeColors, text: &str) -> egui::RichText {
     egui::RichText::new(text.to_uppercase())
         .size(10.0)
@@ -317,6 +360,7 @@ fn tab_bar_contents(
     let text_color = bg_color(ch.text);
     let mut rects: Vec<egui::Rect> = Vec::with_capacity(titles.len());
     for (i, title) in titles.iter().enumerate() {
+        let group_color = configured_group_color(ui, groups.get(i).and_then(|g| g.as_deref()));
         if tab_group_boundary(groups, i) {
             let (divider, _) = ui.allocate_exact_size(egui::vec2(6.0, 22.0), egui::Sense::hover());
             ui.painter().line_segment(
@@ -338,13 +382,7 @@ fn tab_bar_contents(
         let extra = if closable { 46.0 } else { 30.0 };
         let desired = egui::vec2(galley.size().x + extra, 22.0);
         let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::click_and_drag());
-        let bg = if i == active {
-            bg_color(ch.active)
-        } else if resp.hovered() {
-            bg_color(ch.hover)
-        } else {
-            egui::Color32::TRANSPARENT
-        };
+        let bg = group_background(ch, group_color, i == active, resp.hovered());
         ui.painter().rect_filled(rect, 4.0, bg);
         let ir = egui::Rect::from_center_size(
             egui::pos2(rect.left() + 12.0, rect.center().y),
@@ -467,6 +505,7 @@ pub fn sidebar(
     let mut rects: Vec<egui::Rect> = Vec::with_capacity(titles.len());
     for (i, title) in titles.iter().enumerate() {
         let group = groups.get(i).and_then(|g| g.as_deref());
+        let group_color = configured_group_color(ui, group);
         // A named group opens a section: its name heads the rows that
         // follow, and those rows indent under it. Only the change into the
         // ungrouped tail keeps the tab bar's thin divider (ADR 0011).
@@ -496,13 +535,7 @@ pub fn sidebar(
             egui::vec2(ui.available_width(), 24.0),
             egui::Sense::click_and_drag(),
         );
-        let bg = if i == active {
-            bg_color(ch.active)
-        } else if resp.hovered() {
-            bg_color(ch.hover)
-        } else {
-            egui::Color32::TRANSPARENT
-        };
+        let bg = group_background(ch, group_color, i == active, resp.hovered());
         ui.painter().rect_filled(rect, 5.0, bg);
         let icon = icons
             .get(i)
@@ -1032,6 +1065,11 @@ pub trait Chrome {
     fn tab_groups(&self) -> Vec<Option<String>> {
         Vec::new()
     }
+    /// Chrome background per group name (`[groups]` in config.toml). Empty
+    /// keeps the theme's colours.
+    fn group_colors(&self) -> std::collections::BTreeMap<String, Rgb> {
+        std::collections::BTreeMap::new()
+    }
     fn on_mark_tab(&mut self, i: usize) {}
     fn on_group_tab(&mut self, i: usize) {}
     fn on_ungroup_tab(&mut self, i: usize) {}
@@ -1154,6 +1192,7 @@ pub fn render(ctx: &egui::Context, host: &mut impl Chrome) {
     let tabs = host.tabs();
     let titles: Vec<String> = tabs.iter().map(|t| t.title.clone()).collect();
     let tab_groups = host.tab_groups();
+    publish_group_colors(ctx, host.group_colors());
     let badges: Vec<Option<Rgb>> = tabs.iter().map(|t| t.badge).collect();
     let icons: Vec<crate::icons::TabIcon> = tabs.iter().map(|t| t.icon.clone()).collect();
     let locations: Vec<String> = tabs.iter().map(|t| t.location.clone()).collect();
@@ -2549,6 +2588,35 @@ mod tab_menu_tests {
                 egui::Shape::Text(text) if text.galley.job.text.contains("Agent state: Paused · unfinished")
             )), "state explanation missing from hover (vertical={vertical})");
         }
+    }
+
+    /// An unconfigured group keeps the frame exactly as it was; a configured
+    /// one paints its own colour, brighter while active or hovered.
+    #[test]
+    fn a_group_colour_replaces_the_default_row_fill() {
+        let ch = ChromeColors::dark();
+        assert_eq!(
+            group_background(&ch, None, false, false),
+            egui::Color32::TRANSPARENT
+        );
+        assert_eq!(
+            group_background(&ch, None, true, false),
+            bg_color(ch.active)
+        );
+        assert_eq!(group_background(&ch, None, false, true), bg_color(ch.hover));
+        let color = Rgb(0x20, 0x34, 0x3a);
+        assert_eq!(
+            group_background(&ch, Some(color), false, false),
+            bg_color(color)
+        );
+        assert_ne!(
+            group_background(&ch, Some(color), true, false),
+            bg_color(color)
+        );
+        assert_ne!(
+            group_background(&ch, Some(color), false, true),
+            bg_color(color)
+        );
     }
 
     #[test]

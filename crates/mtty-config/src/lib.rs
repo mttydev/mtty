@@ -317,6 +317,8 @@ struct RawConfig {
     #[serde(rename = "sync-dir")]
     sync_dir: Option<String>,
     theme: Option<String>,
+    /// `[groups]`: one chrome background per tab/session group name.
+    groups: Option<std::collections::BTreeMap<String, String>>,
     colors: Option<RawColors>,
     /// `[lsp]`: `enabled`, and a table per server (`[lsp.rust]`).
     lsp: Option<toml::Table>,
@@ -458,6 +460,8 @@ pub struct Config {
     pub theme: Theme,
     /// The named theme the colours started from (`theme = "…"`), if any.
     pub theme_name: Option<String>,
+    /// Chrome background per group name (`[groups]`). Empty keeps the theme's.
+    pub groups: std::collections::BTreeMap<String, Rgb>,
     /// Set when no `config.toml` was used and settings were imported
     /// (`"ghostty"` / `"alacritty"`).
     pub imported_from: Option<&'static str>,
@@ -684,6 +688,7 @@ impl Default for Config {
             lsp: LspConfig::default(),
             acp: AcpConfig::default(),
             theme_name: None,
+            groups: std::collections::BTreeMap::new(),
             imported_from: None,
             theme: Theme::default(),
         }
@@ -1170,6 +1175,13 @@ impl Config {
                 cfg.theme_name = Some(name);
             }
         }
+        if let Some(groups) = raw.groups {
+            for (name, hex) in groups {
+                if let Some(color) = Rgb::parse(&hex) {
+                    cfg.groups.insert(name, color);
+                }
+            }
+        }
         if let Some(colors) = raw.colors {
             if let Some(bg) = colors.background.as_deref().and_then(Rgb::parse) {
                 cfg.theme.background = bg;
@@ -1455,6 +1467,20 @@ env = { AGENT_MODE = "test", IGNORED_NONSTRING = 5 }
         assert_eq!(Rgb::parse("#2e3440"), Some(Rgb(0x2e, 0x34, 0x40)));
         assert_eq!(Rgb::parse("2e3440"), Some(Rgb(0x2e, 0x34, 0x40)));
         assert_eq!(Rgb::parse("nope"), None);
+    }
+
+    #[test]
+    fn parses_group_backgrounds() {
+        let cfg =
+            Config::from_toml("[groups]\nmiao = \"#3a2f4a\"\nembrix = \"#20343a\"\nbad = \"nope\"")
+                .expect("config parses");
+        assert_eq!(cfg.groups.get("miao"), Some(&Rgb(0x3a, 0x2f, 0x4a)));
+        assert_eq!(cfg.groups.get("embrix"), Some(&Rgb(0x20, 0x34, 0x3a)));
+        assert!(
+            !cfg.groups.contains_key("bad"),
+            "an invalid colour is ignored"
+        );
+        assert!(Config::default().groups.is_empty(), "unset keeps the theme");
     }
 
     #[test]

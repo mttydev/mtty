@@ -64,6 +64,12 @@ font-size = 13                   # default
 # Built-in named theme: nord | dracula | gruvbox | mtty | solarized | tokyo-night.
 # theme = "dracula"   # overridden by explicit [colors] below
 
+# Per-group chrome background for the tab chips and sidebar rows (optional).
+# The key is the group name; unset groups keep the theme's fill.
+# [groups]
+# miao = "#3a2f4a"
+# embrix = "#20343a"
+
 [colors]
 background = "#2e3440"
 foreground = "#d8dee9"
