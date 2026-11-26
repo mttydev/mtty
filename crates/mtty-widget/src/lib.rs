@@ -4502,6 +4502,37 @@ impl State {
                         if bg != theme.bg && bg != panel_bg {
                             quads.push(quad(ox, oy, row, col, cw, ch, (bg.0, bg.1, bg.2)));
                         }
+                        // A rule is drawn as a solid bar across the whole cell.
+                        // The font's glyph stops short of the cell's edges once
+                        // the line height is larger than its ink, so a column of
+                        // them reads as a dashed rule; the bar closes the gaps.
+                        let ink = if cell.inverse {
+                            theme.color(cell.bg, false)
+                        } else {
+                            theme.color(cell.fg, false)
+                        };
+                        let (px, py) = (ox + col as f32 * cw, oy + row as f32 * ch);
+                        match cell.ch {
+                            '│' | '┃' => {
+                                let w = if cell.ch == '┃' { 2.0 } else { 1.0 };
+                                let left = (px + cw / 2.0 - w / 2.0).round();
+                                quads.push(Quad::new(
+                                    (left, py),
+                                    (left + w, py + ch),
+                                    (ink.0, ink.1, ink.2, 255),
+                                ));
+                            }
+                            '─' | '━' => {
+                                let h = if cell.ch == '━' { 2.0 } else { 1.0 };
+                                let top = (py + ch / 2.0 - h / 2.0).round();
+                                quads.push(Quad::new(
+                                    (px, top),
+                                    (px + cw, top + h),
+                                    (ink.0, ink.1, ink.2, 255),
+                                ));
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 if let Some((pid, sel)) = &selection {
