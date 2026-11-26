@@ -73,6 +73,14 @@ pub struct Terminal {
     capture_cwd: Option<String>,
     capture_command: Option<String>,
     next_command: Option<String>,
+    /// The cursor as of the last drain that left no output queued.
+    ///
+    /// Overlays that hang off the cursor — the IME composition and the
+    /// candidate window — anchor here: a frame that is still arriving walks
+    /// the live cursor across the pane, and an overlay drawn on it jumps.
+    settled_cursor: (u16, u16),
+    /// Whether the last drain stopped with output still queued.
+    output_pending: bool,
 }
 
 /// A finished command's output, as plain text, with its exit status.
@@ -628,6 +636,7 @@ impl Terminal {
         cwd: Option<String>,
     ) -> Self {
         let (rows, cols) = screen.size();
+        let settled_cursor = screen.cursor_position();
         Self {
             screen,
             master,
@@ -661,6 +670,8 @@ impl Terminal {
             next_command: None,
             cell_px: (0, 0),
             default_colors: None,
+            settled_cursor,
+            output_pending: false,
         }
     }
 
@@ -710,6 +721,7 @@ impl Terminal {
         }
         let deadline = std::time::Instant::now() + PTY_DRAIN_BUDGET;
         let mut drained = 0;
+        self.output_pending = false;
         loop {
             match self.rx.try_recv() {
                 Ok(incoming) => {
@@ -752,6 +764,7 @@ impl Terminal {
                     if drained >= PTY_DRAIN_BYTES || std::time::Instant::now() >= deadline {
                         // A queued continuation is essential: the reader can be
                         // blocked on a full queue and unable to send a new wake.
+                        self.output_pending = true;
                         (self.waker)();
                         break;
                     }
@@ -764,8 +777,20 @@ impl Terminal {
                 }
             }
         }
+        if !self.output_pending {
+            self.settled_cursor = self.screen.cursor_position();
+        }
         self.graphics.sync_total(self.screen.total_lines());
         changed
+    }
+
+    /// The cursor as of the last drain that left no output queued.
+    ///
+    /// An overlay anchored on the live cursor (the IME composition, the
+    /// candidate window) would jump while a frame is still arriving; it
+    /// anchors here instead.
+    pub fn settled_cursor(&self) -> (u16, u16) {
+        self.settled_cursor
     }
 
     /// Wake even if an application starts a synchronized update then stalls.
