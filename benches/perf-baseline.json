@@ -1,8 +1,8 @@
 {
-  "build_rows_frame_ms": 0.044030393333333334,
-  "hosted_echo_p95_ms": 0.069365,
-  "hosted_output_mbps": 77.37427411614256,
-  "palette_rank_10k_ms": 0.2588456,
-  "screen_snapshot_30_rows_ms": 0.005107558,
-  "vt_parse_mbps": 114.84314427644594
+  "build_rows_frame_ms": 0.07760011333333333,
+  "hosted_echo_p95_ms": 0.128219,
+  "hosted_output_mbps": 49.264083164768074,
+  "palette_rank_10k_ms": 0.47115285,
+  "screen_snapshot_30_rows_ms": 0.009600228,
+  "vt_parse_mbps": 78.71894353021752
 }
